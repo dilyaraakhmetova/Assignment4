@@ -219,10 +219,15 @@ app.post('/edit-profile', upload.single('profilePicture'), async (req, res) => {
     const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
 
     // Check if current password matches the one stored in the database
-    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);  // Assuming you're using bcrypt for password hashing
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
 
     if (!isCurrentPasswordValid) {
-      return res.render('edit-profile', { error: 'Incorrect password' });
+      return res.render('edit-profile', { 
+        error: 'Incorrect password', 
+        username: user.username, 
+        email: user.email, 
+        profilePicture: user.profilePicture || '' 
+      });
     }
 
     const profilePicture = req.file ? '/uploads/' + req.file.filename : user.profilePicture;
@@ -236,8 +241,8 @@ app.post('/edit-profile', upload.single('profilePicture'), async (req, res) => {
 
     // If the user wants to change the password
     if (newPassword) {
-      const hashedPassword = await bcrypt.hash(newPassword, 10);  // Hash the new password
-      updateData.password = hashedPassword;  // Update the password field
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      updateData.password = hashedPassword;
     }
 
     await db.collection('users').updateOne(
@@ -245,8 +250,8 @@ app.post('/edit-profile', upload.single('profilePicture'), async (req, res) => {
       { $set: updateData }
     );
 
-    req.session.username = username; // Update username in session
-    res.redirect('/'); // Redirect to profile or home
+    req.session.username = username;
+    res.redirect('/');
   } catch (err) {
     console.error('Error updating profile:', err);
     res.status(500).send('Error updating profile');
