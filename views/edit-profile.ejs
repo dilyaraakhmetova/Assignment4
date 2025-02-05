@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Profile</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="form-container">
+        <h1>Edit Profile</h1>
+        <form action="/edit-profile" method="POST" enctype="multipart/form-data">
+            <label for="username">Username:</label>
+            <input type="text" name="username" id="username" value="<%= username %>" required>
+            
+            <label for="email">Email:</label>
+            <input type="email" name="email" id="email" value="<%= email %>" required>
+
+            <label for="profilePicture">Profile Picture:</label>
+            <input type="file" name="profilePicture" id="profilePicture">
+            <% if (profilePicture) { %>
+              <img src="<%= profilePicture %>" alt="Profile Picture" class="profile-img">
+            <% } %>
+
+            <label for="currentPassword">Current Password:</label>
+            <input type="password" name="currentPassword" id="currentPassword" required>
+
+            <label for="newPassword">New Password (optional):</label>
+            <input type="password" name="newPassword" id="newPassword">
+
+            <button type="submit" class="btn">Update Profile</button>
+        </form>
+        <a href="/" class="btn">Back to Home</a>
+    </div>
+</body>
+</html>

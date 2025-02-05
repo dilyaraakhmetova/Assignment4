@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome, <%= username %></h1>
+        <% if (profilePicture) { %>
+            <img src="<%= profilePicture ? profilePicture : '/uploads/default.png' %>" alt="Profile Picture" class="profile-img">
+        <% } else { %>
+            <p>No profile picture</p>
+        <% } %>
+        <div class="buttons">
+            <a href="/edit-profile" class="btn">Edit Profile</a>
+            <a href="/logout" class="btn">Logout</a>
+        </div>
+    </div>
+</body>
+</html>
