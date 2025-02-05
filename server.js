@@ -40,7 +40,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   store: sessionStore, // Use sessionStore
-  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true },
+  cookie: { secure: false, httpOnly: true }
 }));
 
 // Set up Express
