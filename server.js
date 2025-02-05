@@ -238,7 +238,7 @@ app.post('/edit-profile', upload.single('profilePicture'), async (req, res) => {
     const updateData = { 
       username: username, 
       email: email,
-      profilePicture: req.file ? '/uploads/' + req.file.filename : '' ,
+      profilePicture,
       error: null
     };
 
