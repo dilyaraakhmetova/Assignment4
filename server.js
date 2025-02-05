@@ -175,23 +175,21 @@ app.get('/logout', (req, res) => {
   });
 });
 
-// Настройка для multer
+// multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadPath = path.join(__dirname, 'uploads');
-    console.log('Saving file to:', uploadPath); // Выведет путь в консоль
+    console.log('Saving file to:', uploadPath); 
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    console.log('Saving file as:', file.originalname); // Выведет имя файла
+    console.log('Saving file as:', file.originalname);
     cb(null, file.originalname);
   }
 });
 
 
-
 const upload = multer({ storage });
-// Страница редактирования профиля с возможностью загрузки фото
 app.get('/edit-profile', async (req, res) => {
   if (req.session.userId) {
     const userId = req.session.userId;
@@ -213,10 +211,8 @@ app.get('/edit-profile', async (req, res) => {
 });
 
 
-// Обработка формы с фото
 app.post('/edit-profile', upload.single('profilePicture'), async (req, res) => {
   const { username, email, currentPassword, newPassword } = req.body;
-  const profilePicture = req.file ? '/uploads/' + req.file.filename : null;
   const userId = req.session.userId;
 
   try {
@@ -228,6 +224,8 @@ app.post('/edit-profile', upload.single('profilePicture'), async (req, res) => {
     if (!isCurrentPasswordValid) {
       return res.status(400).send('Current password is incorrect');
     }
+
+    const profilePicture = req.file ? '/uploads/' + req.file.filename : user.profilePicture;
 
     // Prepare the update object
     const updateData = {
