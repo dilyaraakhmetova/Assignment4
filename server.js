@@ -190,6 +190,7 @@ const storage = multer.diskStorage({
 
 
 const upload = multer({ storage });
+
 app.get('/edit-profile', async (req, res) => {
   if (req.session.userId) {
     const userId = req.session.userId;
@@ -199,7 +200,8 @@ app.get('/edit-profile', async (req, res) => {
       res.render('edit-profile', { 
         username: user.username, 
         email: user.email,  // Pass email to the view
-        profilePicture: user.profilePicture || ''  // Pass profile picture if available
+        profilePicture: user.profilePicture || '',  // Pass profile picture if available
+        error: null
       });
     } catch (err) {
       console.error('Error fetching user data:', err);
@@ -226,17 +228,18 @@ app.post('/edit-profile', upload.single('profilePicture'), async (req, res) => {
         error: 'Incorrect password', 
         username: user.username, 
         email: user.email, 
-        profilePicture: user.profilePicture || '' 
+        profilePicture: req.file ? '/uploads/' + req.file.filename : user.profilePicture 
       });
     }
 
     const profilePicture = req.file ? '/uploads/' + req.file.filename : user.profilePicture;
 
     // Prepare the update object
-    const updateData = {
-      username,
-      email,
-      profilePicture,
+    const updateData = { 
+      username: username, 
+      email: email,
+      profilePicture: req.file ? '/uploads/' + req.file.filename : '' ,
+      error: null
     };
 
     // If the user wants to change the password
