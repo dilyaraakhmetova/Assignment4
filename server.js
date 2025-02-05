@@ -222,7 +222,7 @@ app.post('/edit-profile', upload.single('profilePicture'), async (req, res) => {
     const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);  // Assuming you're using bcrypt for password hashing
 
     if (!isCurrentPasswordValid) {
-      return res.status(400).send('Current password is incorrect');
+      return res.render('edit-profile', { error: 'Incorrect password' });
     }
 
     const profilePicture = req.file ? '/uploads/' + req.file.filename : user.profilePicture;
