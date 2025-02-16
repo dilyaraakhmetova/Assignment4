@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        input, button { margin: 5px; padding: 8px; }
+        .hidden {display: none;}
+    </style>
+    <script>
+        async function loadCollection() {
+            const collection = document.getElementById('collection-select').value;
+            const response = await fetch(`/admin/data?collection=${collection}`);
+            const data = await response.json();
+            renderTable(data, collection);
+            toggleFormFields(collection);
+            updateSearchFields(collection);
+        }
+
+        function toggleFormFields(collection) {
+            const userFields = document.getElementById('user-fields');
+            const productFields = document.getElementById('product-fields');
+
+            if (collection === 'users') {
+                userFields.classList.remove('hidden');
+                productFields.classList.add('hidden');
+            } else if (collection === 'products') {
+                productFields.classList.remove('hidden');
+                userFields.classList.add('hidden');
+            }
+        }
+        
+        function updateSearchFields(collection) {
+            const searchFieldSelect = document.getElementById('search-field');
+            searchFieldSelect.innerHTML = '';
+
+            let fields = [];
+            if (collection === 'users') {
+                fields = ['_id', 'username', 'email'];
+            } else if (collection === 'products') {
+                fields = ['_id', 'name', 'price', 'category'];
+            }
+
+            fields.forEach(field => {
+                const option = document.createElement('option');
+                option.value = field;
+                option.textContent = field;
+                searchFieldSelect.appendChild(option);
+            });
+        } 
+
+        async function find() {
+            const collection = document.getElementById('collection-select').value;
+            const field = document.getElementById('search-field').value;
+            const value = document.getElementById('search-value').value;
+            
+            if (!value) {
+                alert("Please enter a value");
+                return;
+            }
+
+            let url = field === '_id' 
+                ? `/admin/get/${collection}/${value}` 
+                : `/admin/find/${collection}?field=${field}&value=${value}`;
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.error) {
+                alert("Item not found");
+                return;
+            }
+
+            clearForm();
+            renderTable(data, collection);
+            document.getElementById('show-all-btn').style.display = 'inline-block';
+        }
+
+
+        function resetTable() {
+            clearForm();
+            loadCollection();
+            document.getElementById('show-all-btn').style.display = 'none';
+        }
+
+        function renderTable(data, collection) {
+            const table = document.getElementById('data-table');
+            table.innerHTML = '';
+
+            let headers = '';
+            if (collection === 'users') {
+                headers = `<tr><th>ID</th><th>Username</th><th>Email</th><th>Password</th><th>Actions</th></tr>`;
+            } else if (collection === 'products') {
+                headers = `<tr><th>ID</th><th>Name</th><th>Price</th><th>Description</th><th>Category</th><th>Image</th><th>Actions</th></tr>`;
+            }
+
+            const rows = data.map(item => {
+                if (collection === 'users') {
+                    return `
+                        <tr>
+                            <td>${item._id}</td>
+                            <td>${item.username}</td>
+                            <td>${item.email}</td>
+                            <td>${item.password}</td>
+                            <td>
+                                <button onclick="getItem('${item._id}', '${collection}')">🔍</button>
+                                <button onclick="editItem('${item._id}', '${collection}')">✏️</button>
+                                <button onclick="deleteItem('${item._id}', '${collection}')">🗑️</button>
+                            </td>
+                        </tr>
+                    `;
+                } else if (collection === 'products') {
+                    return `
+                        <tr>
+                            <td>${item._id}</td>
+                            <td>${item.name}</td>
+                            <td>${item.price}</td>
+                            <td>${item.description}</td>
+                            <td>${item.category}</td> 
+                            <td>
+                                <img src="${item.imageUrl}" alt="${item.name}" style="width: 70px; height: 70px; object-fit: cover; border-radius: 8px;">
+                            </td>
+                            <td>
+                                <button onclick="getItem('${item._id}', '${collection}')">🔍</button>
+                                <button onclick="editItem('${item._id}', '${collection}')">✏️</button>
+                                <button onclick="deleteItem('${item._id}', '${collection}')">🗑️</button>
+                            </td>
+                        </tr>
+                    `;
+                }
+            }).join('');
+
+            table.innerHTML = headers + rows;
+        }
+
+        async function createItem() {
+            const collection = document.getElementById('collection-select').value;
+            let data = {};
+
+            if (collection === 'users') {
+                data = {
+                    username: document.getElementById('username').value,
+                    email: document.getElementById('email').value,
+                    password: document.getElementById('password').value
+                };
+            } else if (collection === 'products') {
+                data = {
+                    name: document.getElementById('name').value,
+                    price: document.getElementById('price').value,
+                    description: document.getElementById('description').value,
+                    category: document.getElementById('category').value, 
+                    image: document.getElementById('imageUrl').value
+                };
+            }
+
+            await fetch(`/admin/create/${collection}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            clearForm();
+            loadCollection();
+        }
+        
+        function clearForm() {
+            document.getElementById('name').value = '';
+            document.getElementById('email').value = '';
+            document.getElementById('password').value = ''; 
+            document.getElementById('price').value = '';
+            document.getElementById('description').value = '';
+            document.getElementById('category').value = ''; 
+            document.getElementById('search-value').value = '';
+
+        }
+        async function getItem(id, collection) {
+            const response = await fetch(`/admin/get/${collection}/${id}`);
+            const data = await response.json();
+            alert(JSON.stringify(data, null, 2));
+        }
+
+        async function editItem(id, collection) {
+            let updatedData = {};
+
+            if (collection === "products") {
+                updatedData.name = prompt("Enter new name:");
+                updatedData.price = prompt("Enter new price:");
+                updatedData.description = prompt("Enter new description:");
+                updatedData.category = prompt("Enter new category:"); 
+                updatedData.image = prompt("Enter new image URL:");
+            } else if (collection === "users") {
+                updatedData.username = prompt("Enter new username:");
+                updatedData.email = prompt("Enter new email:");
+                updatedData.password = prompt("Enter new password:");
+            } else {
+                alert("Invalid collection");
+                return;
+            }
+
+            Object.keys(updatedData).forEach(key => {
+                if (updatedData[key] === null || updatedData[key] === "") {
+                    delete updatedData[key];
+                }
+            });
+
+            if (Object.keys(updatedData).length > 0) {
+                await fetch(`/admin/update/${collection}/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedData)
+                });
+
+                loadCollection(); 
+            } else {
+                alert("No changes were made.");
+            }
+        }
+
+
+        async function deleteItem(id, collection) {
+            if (confirm("Delete this record?")) {
+                await fetch(`/admin/delete/${collection}/${id}`, { method: 'DELETE' });
+                loadCollection();
+            }
+        }
+        function goBack() {
+            if (document.referrer) {
+                window.history.back();
+            } else {
+                window.location.href = "/index";
+            }
+        }
+
+
+        window.onload = loadCollection;
+    </script>
+</head>
+<body>
+    <h1>Admin Panel</h1>
+
+    <label>Select Collection:</label>
+    <select id="collection-select" onchange="loadCollection()">
+        <option value="users">Users</option>
+        <option value="products">Products</option>
+    </select>
+
+    <h2>Search</h2>
+    <select id="search-field"></select>
+    <input type="text" id="search-value" placeholder="Enter value">
+    <button onclick="find()">Find</button>
+
+    <button id="show-all-btn" onclick="resetTable()" style="display:none;">Show All</button>
+
+
+
+    <div class="form-section">
+        <h2>Add New Entry</h2>
+        <div id="user-fields">
+            <input type="text" id="username" placeholder="Username">
+            <input type="text" id="email" placeholder="Email">
+            <input type="password" id="password" placeholder="Password">
+        </div>
+        <div id="product-fields" class="hidden">
+            <input type="text" id="name" placeholder="Name">
+            <input type="text" id="price" placeholder="Price">
+            <input type="text" id="description" placeholder="Description">
+            <input type="text" id="category" placeholder="Category">
+            <input type="text" id="imageUrl" placeholder="Image URL">
+        </div>
+        <button onclick="createItem()">Create</button>
+    </div>
+
+    <table id="data-table"></table>
+    <button onclick="goBack()" style="margin-top: 20px;">Back</button>
+
+</body>
+</html>

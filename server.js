@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const dotenv = require('dotenv');
 const { MongoClient, ObjectId } = require('mongodb');
-const MongoStore = require('connect-mongo'); // Correctly import connect-mongo
+const MongoStore = require('connect-mongo'); 
 const multer = require('multer');
 const path = require('path');
 
@@ -24,6 +24,7 @@ MongoClient.connect(process.env.MONGO_URI)
   .then(client => {
     console.log('MongoDB connected');
     db = client.db(); // Store the database connection
+    app.locals.db = db; 
   })
   .catch(err => {
     console.error('MongoDB connection error:', err);
@@ -49,16 +50,15 @@ app.use(express.urlencoded({ extended: true }));
 
 // Home page
 app.get('/', async (req, res) => {
-  if (req.session.userId) {
-    try {
-      const user = await db.collection('users').findOne({ _id: new ObjectId(req.session.userId) });
-      res.render('index', { username: req.session.username, profilePicture: user.profilePicture });
-    } catch (err) {
-      console.error('Error fetching user profile:', err);
-      res.redirect('/login');
-    }
-  } else {
-    res.redirect('/login');
+  let username = req.session.username || null;
+  let isAdmin = req.session.role === 'admin'; // Check if the user is an admin
+
+  try {
+    const products = await db.collection('products').find().toArray();
+    res.render('index', { username, isAdmin, products });
+  } catch (err) {
+    console.error('Error fetching products:', err);
+    res.render('index', { username, isAdmin, products: [] });
   }
 });
 
@@ -88,7 +88,7 @@ app.post('/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = { username, email, password: hashedPassword };
+    const newUser = { username, email, password: hashedPassword, role: 'user'};
 
     await db.collection('users').insertOne(newUser);
     res.redirect('/login');
@@ -102,6 +102,7 @@ app.post('/register', async (req, res) => {
 app.get('/login', (req, res) => {
   res.render('login', { error: null }); 
 });
+
 
 // Handle user login
 app.post('/login', async (req, res) => {
@@ -161,6 +162,7 @@ app.post('/login', async (req, res) => {
     // Save session
     req.session.userId = user._id;
     req.session.username = user.username;
+    req.session.role = user.role;
     res.redirect('/');
   } catch (err) {
     console.error('Login error:', err);
@@ -169,7 +171,7 @@ app.post('/login', async (req, res) => {
 });
 
 // Logout user
-app.get('/logout', (req, res) => {
+app.post('/logout', (req, res) => {
   req.session.destroy(() => {
     res.redirect('/login');
   });
@@ -266,4 +268,430 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`http://localhost:${port}`); // Prints a link to the local site
+});
+
+const isAdmin = (req, res, next) => {
+  if (req.session.role !== 'admin') {
+    return res.status(403).send('Access denied');
+  }
+  next();
+};
+
+const isAuthenticated = (req, res, next) => {
+  if (!req.session.userId) {
+    return res.redirect('/login');
+  }
+  next();
+};
+
+app.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
+  res.render('admin', { error: null });
+});
+
+// Admin panel - view
+app.get('/admin', async (req, res) => {
+  if (!req.session.userId) {
+    return res.redirect('/login'); // Only logged-in users can access
+  }
+
+  res.render('admin', { error: null });
+});
+
+app.use(express.json()); // Для обработки JSON-запросов
+
+// Getting data from collections
+app.get('/admin/data', async (req, res) => {
+    const { collection } = req.query;
+    if (!collection || !['users', 'products'].includes(collection)) {
+        return res.status(400).json({ error: 'Invalid collection' });
+    }
+
+    try {
+        const data = await db.collection(collection).find().toArray();
+        res.json(data);
+    } catch (err) {
+        console.error('Error fetching collection:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Adding new document
+app.post('/admin/create/:collection', upload.single('image'), async (req, res) => {
+  const { collection } = req.params;
+
+  if (!['users', 'products'].includes(collection)) {
+      return res.status(400).json({ error: 'Invalid collection' });
+  }
+
+  let newItem;
+  if (collection === 'users') {
+      const { username, email, password } = req.body;
+      if (!username || !email || !password) {
+          return res.status(400).json({ error: 'Missing required fields for user' });
+      }
+
+      try {
+          const hashedPassword = await bcrypt.hash(password, 10);
+          newItem = {
+              username,
+              email,
+              password: hashedPassword,
+              failedAttempts: 0,
+              lockedUntil: null
+          };
+      } catch (err) {
+          console.error('Error hashing password:', err);
+          return res.status(500).json({ error: 'Internal server error' });
+      }
+  } else if (collection === 'products') {
+      const { name, price, description, category } = req.body;
+      if (!name || price == null || description === undefined || !category) {
+          return res.status(400).json({ error: 'Missing required fields for product' });
+      }
+
+      newItem = {
+          name,
+          price: parseFloat(price),
+          description,
+          category,
+          image: req.file ? `/uploads/${req.file.filename}` : null
+      };
+  }
+
+  try {
+      const result = await db.collection(collection).insertOne(newItem);
+      res.json({ success: true, id: result.insertedId });
+  } catch (err) {
+      console.error('Error creating item:', err);
+      res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Find by ID
+app.get('/admin/get/:collection/:id', async (req, res) => {
+  const { collection, id } = req.params;
+  if (!['users', 'products'].includes(collection)) {
+      return res.status(400).json({ error: 'Invalid collection' });
+  }
+
+  try {
+      const item = await db.collection(collection).findOne({ _id: new ObjectId(id) });
+
+      if (!item) return res.status(404).json({ error: 'Item not found' });
+
+      res.json([item]); // Оборачиваем в массив
+  } catch (err) {
+      console.error('Error fetching item:', err);
+      res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Find by other fields
+app.get('/admin/find/:collection', async (req, res) => {
+  const { collection } = req.params;
+  const { field, value } = req.query;
+
+  if (!collection || !['users', 'products'].includes(collection)) {
+    return res.status(400).json({ error: 'Invalid collection' });
+  }
+
+  if (!field || !value) {
+    return res.status(400).json({ error: 'Field and value are required' });
+  }
+
+  try {
+    const query = { [field]: { $regex: value, $options: 'i' } };
+    const data = await db.collection(collection).find(query).toArray();
+    res.json(data);
+  } catch (err) {
+    console.error('Error searching collection:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update the document by ID
+app.put('/admin/update/:collection/:id', async (req, res) => {
+    const { collection, id } = req.params;
+    if (!['users', 'products'].includes(collection)) {
+        return res.status(400).json({ error: 'Invalid collection' });
+    }
+
+    try {
+        let updateData = { ...req.body };
+
+        if (collection === 'users' && updateData.password) {
+            const saltRounds = 10;
+            updateData.password = await bcrypt.hash(updateData.password, saltRounds);
+        }
+
+        const result = await db.collection(collection).updateOne(
+            { _id: new ObjectId(id) },
+            { $set: updateData }
+        );
+
+        if (result.modifiedCount === 0) {
+            return res.status(404).json({ error: 'Item not found or no changes made' });
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error updating item:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
+// Delete document by ID
+app.delete('/admin/delete/:collection/:id', async (req, res) => {
+    const { collection, id } = req.params;
+    if (!['users', 'products'].includes(collection)) {
+        return res.status(400).json({ error: 'Invalid collection' });
+    }
+
+    try {
+        const result = await db.collection(collection).deleteOne({ _id: new ObjectId(id) });
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error deleting item:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Filtering
+app.get('/products', async (req, res) => {
+  const { category, search, sort } = req.query;
+  let filter = {};
+
+  if (category) {
+      filter.category = category;
+  }
+
+  if (search) {
+      filter.name = { $regex: search, $options: 'i' }; 
+  }
+
+  let sortOptions = {};
+  if (sort === 'asc') {
+      sortOptions.price = 1; 
+  } else if (sort === 'desc') {
+      sortOptions.price = -1; 
+  }
+
+  try {
+      const products = await db.collection('products')
+          .find(filter)
+          .sort(sortOptions)
+          .toArray();
+      res.json(products);
+  } catch (err) {
+      console.error('Error fetching products:', err);
+      res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Adding to cart 
+app.post('/cart/add', isAuthenticated, async (req, res) => {
+  const userId = req.session.userId;
+  const { productId } = req.body;
+
+  if (!userId) {
+      return res.status(401).json({ message: 'You must be logged in to add items to the cart' });
+  }
+
+  try {
+      const cartsCollection = db.collection('carts');
+
+      let cart = await cartsCollection.findOne({ userId });
+
+      if (!cart) {
+          cart = { userId, items: [{ productId, quantity: 1 }] };
+          await cartsCollection.insertOne(cart);
+      } else {
+          const existingItem = cart.items.find(item => item.productId === productId);
+
+          if (existingItem) {
+              await cartsCollection.updateOne(
+                  { userId, 'items.productId': productId },
+                  { $inc: { 'items.$.quantity': 1 } }
+              );
+          } else {
+              await cartsCollection.updateOne(
+                  { userId },
+                  { $push: { items: { productId, quantity: 1 } } }
+              );
+          }
+      }
+
+      res.json({ message: 'Product added to cart' });
+  } catch (error) {
+      console.error('Error adding to cart:', error);
+      res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+// Open a cart
+app.get('/cart', isAuthenticated, async (req, res) => {
+    const userId = req.session.userId;
+
+    try {
+        const cartsCollection = db.collection('carts');
+        const productsCollection = db.collection('products');
+
+        let cart = await cartsCollection.findOne({ userId });
+
+        if (!cart) {
+            cart = { userId, items: [] };
+            const result = await cartsCollection.insertOne(cart);
+            cart._id = result.insertedId;
+        }
+
+        if (cart.items.length > 0) {
+            const productIds = cart.items.map(item => new ObjectId(item.productId));
+
+            const products = await productsCollection.find({ _id: { $in: productIds } }).toArray();
+
+            cart.items = cart.items.map(item => {
+                const product = products.find(p => p._id.toString() === item.productId.toString());
+                if (product) {
+                    return {
+                        ...item,
+                        productId: {
+                            _id: product._id,
+                            name: product.name || "Unknown Product",
+                            price: product.price || 0,
+                            imageUrl: product.imageUrl || ""
+                        }
+                    };
+                } else {
+                    return { ...item, productId: { name: "Unknown", price: 0, imageUrl: "" } };
+                }
+            });
+        }
+        res.render('cart', { cart });
+    } catch (error) {
+        console.error('Error fetching cart:', error);
+        res.render('cart', { cart: { items: [] } });
+    }
+});
+
+
+app.post('/cart/update', isAuthenticated, async (req, res) => {
+  const userId = req.session.userId;
+  const { productId, change } = req.body;
+
+  try {
+      const cartsCollection = db.collection('carts');
+
+      await cartsCollection.updateOne(
+          { userId, 'items.productId': productId },
+          { $inc: { 'items.$.quantity': change } }
+      );
+
+      res.json({ message: 'Cart updated successfully' });
+  } catch (error) {
+      console.error('Error updating cart:', error);
+      res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/cart/remove', isAuthenticated, async (req, res) => {
+  const userId = req.session.userId;
+  const { productId } = req.body;
+
+  try {
+      const cartsCollection = db.collection('carts');
+
+      await cartsCollection.updateOne(
+          { userId },
+          { $pull: { items: { productId } } }
+      );
+
+      res.json({ message: 'Item removed from cart' });
+  } catch (error) {
+      console.error('Error removing item from cart:', error);
+      res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+app.post('/cart/checkout', async (req, res) => {
+    try {
+        const userId = req.session.userId;
+        if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+        const db = req.app.locals.db;
+        const cartsCollection = db.collection('carts');
+        const ordersCollection = db.collection('orders');
+        const productsCollection = db.collection('products');
+
+        const cart = await cartsCollection.findOne({ userId });
+
+        if (!cart || cart.items.length === 0) {
+            return res.status(400).json({ message: "Cart is empty!" });
+        }
+
+        console.log("🔍 Найденная корзина:", cart);
+
+        const fullItems = await Promise.all(cart.items.map(async (item) => {
+            try {
+                const product = await productsCollection.findOne({ _id: new ObjectId(item.productId) });
+                console.log("🔍 Найденный товар:", product);
+
+                return {
+                    name: product ? product.name : "Unknown",
+                    price: product ? product.price : 0,
+                    imageUrl: product ? product.imageUrl : "",
+                    quantity: item.quantity
+                };
+            } catch (err) {
+                console.error("❌ Ошибка поиска товара:", err);
+                return {
+                    name: "Unknown",
+                    price: 0,
+                    imageUrl: "",
+                    quantity: item.quantity
+                };
+            }
+        }));
+
+        console.log("📦 Итоговые товары:", fullItems);
+
+        const order = {
+            userId,
+            items: fullItems,
+            totalPrice: fullItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
+            createdAt: new Date(),
+        };
+
+        console.log("📝 Создан заказ:", order);
+
+        await ordersCollection.insertOne(order);
+        await cartsCollection.deleteOne({ userId });
+
+        res.json({ message: "Order placed successfully!" });
+
+    } catch (error) {
+        console.error("❌ Checkout Error:", error);
+        res.status(500).json({ message: "Checkout failed.", error: error.message });
+    }
+});
+
+
+
+app.get('/orders', isAuthenticated, async (req, res) => {
+  const userId = req.session.userId;
+  const db = req.app.locals.db;
+
+  try {
+      const ordersCollection = db.collection('orders');
+      const orders = await ordersCollection.find({ userId }).toArray();
+      res.render('orders', { orders });
+  } catch (error) {
+      console.error('Error fetching orders:', error);
+      res.render('orders', { orders: [] });
+  }
 });

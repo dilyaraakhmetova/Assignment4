@@ -1,23 +1,127 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home</title>
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/home.css">
+    <title>Online Shop</title>
 </head>
 <body>
-    <div class="container">
-        <h1>Welcome, <%= username %></h1>
-        <% if (profilePicture) { %>
-            <img src="<%= profilePicture ? profilePicture : '/uploads/default.png' %>" alt="Profile Picture" class="profile-img">
+    <header>
+        <nav>
+            <div class="logo">
+                <a href="/">Online Shop</a>
+            </div>
+            <ul class="nav-links">
+                <% if (username) { %>
+                    <li><a href="/edit-profile">Profile</a></li>
+                    <% if (isAdmin) { %>  
+                        <li><a href="/admin">Admin Panel</a></li> 
+                    <% } %>
+                    <li><a href="/cart">Cart</a></li>
+                    <li>
+                        <form action="/logout" method="POST" style="display:inline;">
+                            <button type="submit">Log out</button>
+                        </form>
+                    </li>
+                <% } else { %>
+                    <li><a href="/login">Login</a></li>
+                    <li><a href="/register">Register</a></li>
+                <% } %>
+            </ul>
+        </nav>
+    </header>
+    
+    
+    <main>
+        <% if (username) { %>
+            <h1>Welcome, <%= username %>!</h1>
         <% } else { %>
-            <p>No profile picture</p>
+            <h1>Welcome to Online Shop!</h1>
         <% } %>
-        <div class="buttons">
-            <a href="/edit-profile" class="btn">Edit Profile</a>
-            <a href="/logout" class="btn">Logout</a>
+    
+        <h2>Catalog</h2>
+    
+        <div class="filters">
+            <input type="text" id="search" placeholder="Search by name..." oninput="filterProducts()">
+            <select id="category" onchange="filterProducts()">
+                <option value="">All Categories</option>
+                <option value="T-Shirts">T-Shirts</option>
+                <option value="Jeans">Jeans</option>
+                <option value="Sweatshirts">Sweatshirts</option>
+                <option value="Shoes">Shoes</option>
+            </select>
+            <select id="sort" onchange="filterProducts()">
+                <option value="">Sort by price</option>
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+            </select>
         </div>
-    </div>
+    
+        <div class="product-grid">
+            <% products.forEach(product => { %>
+                <div class="product-card">
+                    <img src="<%= product.imageUrl %>" alt="<%= product.name %>">
+                    <h3><%= product.name %></h3>
+                    <p class="price">$<%= product.price %></p>
+                    <p class="description"><%= product.description.substring(0, 50) %>...</p>
+                    <% if (username) { %> 
+                        <button onclick="addToCart('<%= product._id %>')">Add to Cart</button>
+                    <% } %>
+                </div>
+            <% }) %>
+        </div>
+    </main>
+    <script>
+        const username = "<%= username ? username : '' %>"; 
+        async function filterProducts() {
+            const search = document.getElementById('search').value;
+            const category = document.getElementById('category').value;
+            const sort = document.getElementById('sort').value;
+    
+            const url = `/products?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}&sort=${encodeURIComponent(sort)}`;
+    
+            try {
+                const response = await fetch(url);
+                const products = await response.json();
+    
+                const productGrid = document.querySelector('.product-grid');
+                productGrid.innerHTML = '';
+    
+                products.forEach(product => {
+                    const productCard = `
+                        <div class="product-card">
+                            <img src="${product.imageUrl}" alt="${product.name}">
+                            <h3>${product.name}</h3>
+                            <p class="price">$${product.price}</p>
+                            <p class="description">${product.description.substring(0, 50)}...</p>
+                            ${username ? `<button onclick="addToCart('${product._id}')">Add to Cart</button>` : ''}
+                        </div>
+                    `;
+                    productGrid.innerHTML += productCard;
+                });
+            } catch (err) {
+                console.error('Error fetching products:', err);
+            }
+        }
+
+        async function addToCart(productId) {
+            try {
+                const response = await fetch('/cart/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ productId })
+                });
+
+                const data = await response.json();
+                alert(data.message);
+            } catch (error) {
+                console.error('Error adding to cart:', error);
+            }
+        }
+        
+        window.onload = filterProducts;
+    </script>
+    
 </body>
 </html>

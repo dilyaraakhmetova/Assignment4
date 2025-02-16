@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/order.css">
+    <title>My Orders</title>
+</head>
+
+<body>
+    <header>
+        <nav>
+            <div class="logo"><a href="/">Online Shop</a></div>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/cart">Cart</a></li>
+            </ul>
+        </nav>
+    </header>
+    <h1>My Orders</h1>
+
+    <% if (orders.length > 0) { %>
+        <table>
+            <thead>
+                <tr>
+                    <th>Order ID</th>
+                    <th>Items</th>
+                    <th>Total Price</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% orders.forEach(order => { %>
+                    <tr>
+                        <td><%= order._id %></td>
+                        <td>
+                            <ul>
+                                <% order.items.forEach(item => { %>
+                                    <li><%= item.name %> (x<%= item.quantity %>)</li>
+                                <% }) %>
+                            </ul>
+                        </td>
+                        <td>$<%= order.totalPrice.toFixed(2) %></td>
+                        <td><%= new Date(order.createdAt).toLocaleString() %></td>
+                    </tr>
+                <% }) %>                
+            </tbody>
+        </table>
+    <% } else { %>
+        <p>You have no orders yet.</p>
+    <% } %>
+
+</body>
+</html>
